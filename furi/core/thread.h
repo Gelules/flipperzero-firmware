@@ -60,6 +60,20 @@ typedef void (*FuriThreadStateCallback)(FuriThreadState state, void* context);
  */
 FuriThread* furi_thread_alloc();
 
+/** Allocate FuriThread, shortcut version
+ * 
+ * @param name 
+ * @param stack_size 
+ * @param callback 
+ * @param context 
+ * @return FuriThread* 
+ */
+FuriThread* furi_thread_alloc_ex(
+    const char* name,
+    uint32_t stack_size,
+    FuriThreadCallback callback,
+    void* context);
+
 /** Release FuriThread
  *
  * @param      thread  FuriThread instance
@@ -235,6 +249,25 @@ size_t furi_thread_stdout_write(const char* data, size_t size);
  * @return int32_t error code
  */
 int32_t furi_thread_stdout_flush();
+
+/** Suspend thread
+ * 
+ * @param thread_id thread id
+ */
+void furi_thread_suspend(FuriThreadId thread_id);
+
+/** Resume thread
+ * 
+ * @param thread_id thread id
+ */
+void furi_thread_resume(FuriThreadId thread_id);
+
+/** Get thread suspended state
+ * 
+ * @param thread_id thread id
+ * @return true if thread is suspended
+ */
+bool furi_thread_is_suspended(FuriThreadId thread_id);
 
 #ifdef __cplusplus
 }

@@ -179,12 +179,12 @@ SVCCTL_UserEvtFlowStatus_t SVCCTL_App_Notification(void* pckt) {
 
         case EVT_BLUE_GAP_PASS_KEY_REQUEST: {
             // Generate random PIN code
-            uint32_t pin = rand() % 999999;
+            uint32_t pin = rand() % 999999; //-V1064
             aci_gap_pass_key_resp(gap->service.connection_handle, pin);
             if(furi_hal_rtc_is_flag_set(FuriHalRtcFlagLock)) {
                 FURI_LOG_I(TAG, "Pass key request event. Pin: ******");
             } else {
-                FURI_LOG_I(TAG, "Pass key request event. Pin: %06d", pin);
+                FURI_LOG_I(TAG, "Pass key request event. Pin: %06ld", pin);
             }
             GapEvent event = {.type = GapEventTypePinCodeShow, .data.pin_code = pin};
             gap->on_event_cb(event, gap->context);
@@ -227,7 +227,7 @@ SVCCTL_UserEvtFlowStatus_t SVCCTL_App_Notification(void* pckt) {
         case EVT_BLUE_GAP_NUMERIC_COMPARISON_VALUE: {
             uint32_t pin =
                 ((aci_gap_numeric_comparison_value_event_rp0*)(blue_evt->data))->Numeric_Value;
-            FURI_LOG_I(TAG, "Verify numeric comparison: %06d", pin);
+            FURI_LOG_I(TAG, "Verify numeric comparison: %06ld", pin);
             GapEvent event = {.type = GapEventTypePinCodeVerify, .data.pin_code = pin};
             bool result = gap->on_event_cb(event, gap->context);
             aci_gap_numeric_comparison_value_confirm_yesno(gap->service.connection_handle, result);
@@ -478,7 +478,6 @@ bool gap_init(GapConfig* config, GapEventCallback on_event_cb, void* context) {
 
     gap = malloc(sizeof(Gap));
     gap->config = config;
-    srand(DWT->CYCCNT);
     // Create advertising timer
     gap->advertise_timer = furi_timer_alloc(gap_advetise_timer_callback, FuriTimerTypeOnce, NULL);
     // Initialization of GATT & GAP layer
@@ -493,11 +492,7 @@ bool gap_init(GapConfig* config, GapEventCallback on_event_cb, void* context) {
     gap->enable_adv = true;
 
     // Thread configuration
-    gap->thread = furi_thread_alloc();
-    furi_thread_set_name(gap->thread, "BleGapDriver");
-    furi_thread_set_stack_size(gap->thread, 1024);
-    furi_thread_set_context(gap->thread, gap);
-    furi_thread_set_callback(gap->thread, gap_app);
+    gap->thread = furi_thread_alloc_ex("BleGapDriver", 1024, gap_app, gap);
     furi_thread_start(gap->thread);
 
     // Command queue allocation

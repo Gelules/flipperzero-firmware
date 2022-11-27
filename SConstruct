@@ -7,65 +7,44 @@
 # construction of certain targets behind command-line options.
 
 import os
-import subprocess
+from fbt.util import path_as_posix
+
+DefaultEnvironment(tools=[])
 
 EnsurePythonVersion(3, 8)
 
-DefaultEnvironment(tools=[])
 # Progress(["OwO\r", "owo\r", "uwu\r", "owo\r"], interval=15)
-
 
 # This environment is created only for loading options & validating file/dir existence
 fbt_variables = SConscript("site_scons/commandline.scons")
-cmd_environment = Environment(tools=[], variables=fbt_variables)
-Help(fbt_variables.GenerateHelpText(cmd_environment))
+cmd_environment = Environment(
+    toolpath=["#/scripts/fbt_tools"],
+    tools=[
+        ("fbt_help", {"vars": fbt_variables}),
+    ],
+    variables=fbt_variables,
+)
 
 # Building basic environment - tools, utility methods, cross-compilation
 # settings, gcc flags for Cortex-M4, basic builders and more
 coreenv = SConscript(
     "site_scons/environ.scons",
     exports={"VAR_ENV": cmd_environment},
+    toolpath=["#/scripts/fbt_tools"],
 )
 SConscript("site_scons/cc.scons", exports={"ENV": coreenv})
 
-# Store root dir in environment for certain tools
-coreenv["ROOT_DIR"] = Dir(".")
-
-
 # Create a separate "dist" environment and add construction envs to it
 distenv = coreenv.Clone(
-    tools=["fbt_dist", "openocd", "blackmagic", "jflash"],
-    OPENOCD_GDB_PIPE=[
-        "|openocd -c 'gdb_port pipe; log_output debug/openocd.log' ${[SINGLEQUOTEFUNC(OPENOCD_OPTS)]}"
+    tools=[
+        "fbt_dist",
+        "fbt_debugopts",
+        "openocd",
+        "blackmagic",
+        "jflash",
     ],
-    GDBOPTS_BASE=[
-        "-ex",
-        "target extended-remote ${GDBREMOTE}",
-        "-ex",
-        "set confirm off",
-    ],
-    GDBOPTS_BLACKMAGIC=[
-        "-ex",
-        "monitor swdp_scan",
-        "-ex",
-        "monitor debug_bmp enable",
-        "-ex",
-        "attach 1",
-        "-ex",
-        "set mem inaccessible-by-default off",
-    ],
-    GDBPYOPTS=[
-        "-ex",
-        "source debug/FreeRTOS/FreeRTOS.py",
-        "-ex",
-        "source debug/PyCortexMDebug/PyCortexMDebug.py",
-        "-ex",
-        "svd_load ${SVD_FILE}",
-        "-ex",
-        "compare-sections",
-    ],
-    JFLASHPROJECT="${ROOT_DIR.abspath}/debug/fw.jflash",
     ENV=os.environ,
+    UPDATE_BUNDLE_DIR="dist/${DIST_DIR}/f${TARGET_HW}-update-${DIST_SUFFIX}",
 )
 
 firmware_env = distenv.AddFwProject(
@@ -160,11 +139,39 @@ if GetOption("fullenv") or any(
 basic_dist = distenv.DistCommand("fw_dist", distenv["DIST_DEPENDS"])
 distenv.Default(basic_dist)
 
+dist_dir = distenv.GetProjetDirName()
+fap_dist = [
+    distenv.Install(
+        distenv.Dir(f"#/dist/{dist_dir}/apps/debug_elf"),
+        list(
+            app_artifact.debug
+            for app_artifact in firmware_env["FW_EXTAPPS"].applications.values()
+        ),
+    ),
+    distenv.Install(
+        f"#/dist/{dist_dir}/apps",
+        "#/assets/resources/apps",
+    ),
+]
+Depends(
+    fap_dist,
+    list(
+        app_artifact.validator
+        for app_artifact in firmware_env["FW_EXTAPPS"].applications.values()
+    ),
+)
+Alias("fap_dist", fap_dist)
+# distenv.Default(fap_dist)
+
+distenv.Depends(firmware_env["FW_RESOURCES"], firmware_env["FW_EXTAPPS"].resources_dist)
+
+
 # Target for bundling core2 package for qFlipper
 copro_dist = distenv.CoproBuilder(
-    distenv.Dir("assets/core2_firmware"),
+    "#/build/core2_firmware.tgz",
     [],
 )
+distenv.AlwaysBuild(copro_dist)
 distenv.Alias("copro_dist", copro_dist)
 
 firmware_flash = distenv.AddOpenOCDFlashTarget(firmware_env)
@@ -194,6 +201,7 @@ firmware_debug = distenv.PhonyTarget(
     source=firmware_env["FW_ELF"],
     GDBOPTS="${GDBOPTS_BASE}",
     GDBREMOTE="${OPENOCD_GDB_PIPE}",
+    FBT_FAP_DEBUG_ELF_ROOT=path_as_posix(firmware_env.subst("$FBT_FAP_DEBUG_ELF_ROOT")),
 )
 distenv.Depends(firmware_debug, firmware_flash)
 
@@ -203,15 +211,25 @@ distenv.PhonyTarget(
     source=firmware_env["FW_ELF"],
     GDBOPTS="${GDBOPTS_BASE} ${GDBOPTS_BLACKMAGIC}",
     GDBREMOTE="${BLACKMAGIC_ADDR}",
+    FBT_FAP_DEBUG_ELF_ROOT=path_as_posix(firmware_env.subst("$FBT_FAP_DEBUG_ELF_ROOT")),
 )
 
 # Debug alien elf
 distenv.PhonyTarget(
     "debug_other",
     "${GDBPYCOM}",
-    GDBPYOPTS='-ex "source debug/PyCortexMDebug/PyCortexMDebug.py" ',
+    GDBOPTS="${GDBOPTS_BASE}",
     GDBREMOTE="${OPENOCD_GDB_PIPE}",
+    GDBPYOPTS='-ex "source ${FBT_DEBUG_DIR}/PyCortexMDebug/PyCortexMDebug.py" ',
 )
+
+distenv.PhonyTarget(
+    "debug_other_blackmagic",
+    "${GDBPYCOM}",
+    GDBOPTS="${GDBOPTS_BASE}  ${GDBOPTS_BLACKMAGIC}",
+    GDBREMOTE="$${BLACKMAGIC_ADDR}",
+)
+
 
 # Just start OpenOCD
 distenv.PhonyTarget(
@@ -222,14 +240,14 @@ distenv.PhonyTarget(
 # Linter
 distenv.PhonyTarget(
     "lint",
-    "${PYTHON3} scripts/lint.py check ${LINT_SOURCES}",
-    LINT_SOURCES=firmware_env["LINT_SOURCES"],
+    "${PYTHON3} ${FBT_SCRIPT_DIR}/lint.py check ${LINT_SOURCES}",
+    LINT_SOURCES=[n.srcnode() for n in firmware_env["LINT_SOURCES"]],
 )
 
 distenv.PhonyTarget(
     "format",
-    "${PYTHON3} scripts/lint.py format ${LINT_SOURCES}",
-    LINT_SOURCES=firmware_env["LINT_SOURCES"],
+    "${PYTHON3} ${FBT_SCRIPT_DIR}/lint.py format ${LINT_SOURCES}",
+    LINT_SOURCES=[n.srcnode() for n in firmware_env["LINT_SOURCES"]],
 )
 
 # PY_LINT_SOURCES contains recursively-built modules' SConscript files + application manifests
@@ -240,7 +258,6 @@ firmware_env.Append(
         "site_scons",
         "scripts",
         # Extra files
-        "applications/extapps.scons",
         "SConstruct",
         "firmware.scons",
         "fbt_options.py",
@@ -270,13 +287,23 @@ distenv.PhonyTarget(
 )
 
 # Start Flipper CLI via PySerial's miniterm
-distenv.PhonyTarget("cli", "${PYTHON3} scripts/serial_cli.py")
+distenv.PhonyTarget("cli", "${PYTHON3} ${FBT_SCRIPT_DIR}/serial_cli.py")
 
 
 # Find blackmagic probe
 distenv.PhonyTarget(
     "get_blackmagic",
     "@echo $( ${BLACKMAGIC_ADDR} $)",
+)
+
+
+# Find STLink probe ids
+distenv.PhonyTarget(
+    "get_stlink",
+    distenv.Action(
+        lambda **kw: distenv.GetDevices(),
+        None,
+    ),
 )
 
 # Prepare vscode environment

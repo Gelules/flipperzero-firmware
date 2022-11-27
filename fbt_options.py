@@ -49,14 +49,12 @@ OPENOCD_OPTS = [
     "-c",
     "transport select hla_swd",
     "-f",
-    "debug/stm32wbx.cfg",
+    "${FBT_DEBUG_DIR}/stm32wbx.cfg",
     "-c",
     "stm32wbx.cpu configure -rtos auto",
-    "-c",
-    "init",
 ]
 
-SVD_FILE = "debug/STM32WB55_CM4.svd"
+SVD_FILE = "${FBT_DEBUG_DIR}/STM32WB55_CM4.svd"
 
 # Look for blackmagic probe on serial ports and local network
 BLACKMAGIC = "auto"
@@ -66,27 +64,24 @@ LOADER_AUTOSTART = ""
 
 FIRMWARE_APPS = {
     "default": [
-        "crypto_start",
         # Svc
         "basic_services",
         # Apps
-        "basic_apps",
-        "updater_app",
-        "storage_move_to_sd",
-        "archive",
+        "main_apps",
+        "system_apps",
         # Settings
-        "passport",
-        "system_settings",
-        "about",
-        # Plugins
-        "basic_plugins",
+        "settings_apps",
+        # Stock plugins - no longer built into fw, now they're .faps
+        # Yet you can still build them as a part of fw
+        # "basic_plugins",
         # Debug
-        "debug_apps",
+        # "debug_apps",
     ],
     "unit_tests": [
         "basic_services",
         "updater_app",
         "unit_tests",
+        "nfc",
     ],
 }
 

@@ -312,7 +312,6 @@ void subghz_protocol_decoder_power_smart_feed(
         if((instance->decoder.decode_data & POWER_SMART_PACKET_HEADER_MASK) ==
            POWER_SMART_PACKET_HEADER) {
             if(subghz_protocol_power_smart_chek_valid(instance->decoder.decode_data)) {
-                instance->decoder.decode_data = instance->decoder.decode_data;
                 instance->generic.data = instance->decoder.decode_data;
                 instance->generic.data_count_bit =
                     subghz_protocol_power_smart_const.min_count_bit_for_found;
@@ -349,7 +348,7 @@ uint8_t subghz_protocol_decoder_power_smart_get_hash_data(void* context) {
 bool subghz_protocol_decoder_power_smart_serialize(
     void* context,
     FlipperFormat* flipper_format,
-    SubGhzPresetDefinition* preset) {
+    SubGhzRadioPreset* preset) {
     furi_assert(context);
     SubGhzProtocolDecoderPowerSmart* instance = context;
     return subghz_block_generic_serialize(&instance->generic, flipper_format, preset);
@@ -373,12 +372,12 @@ bool subghz_protocol_decoder_power_smart_deserialize(void* context, FlipperForma
     return ret;
 }
 
-void subghz_protocol_decoder_power_smart_get_string(void* context, string_t output) {
+void subghz_protocol_decoder_power_smart_get_string(void* context, FuriString* output) {
     furi_assert(context);
     SubGhzProtocolDecoderPowerSmart* instance = context;
     subghz_protocol_power_smart_remote_controller(&instance->generic);
 
-    string_cat_printf(
+    furi_string_cat_printf(
         output,
         "%s %db\r\n"
         "Key:0x%lX%08lX\r\n"

@@ -5,11 +5,23 @@ env.Append(
         "#/lib/mbedtls",
         "#/lib/mbedtls/include",
     ],
+    SDK_HEADERS=[
+        File("mbedtls/include/mbedtls/des.h"),
+        File("mbedtls/include/mbedtls/sha1.h"),
+    ],
 )
 
 
 libenv = env.Clone(FW_LIB_NAME="mbedtls")
 libenv.ApplyLibFlags()
+
+libenv.AppendUnique(
+    CCFLAGS=[
+        # Required for lib to be linkable with .faps
+        "-mword-relocations",
+        "-mlong-calls",
+    ],
+)
 
 sources = [
     "mbedtls/library/des.c",

@@ -12,6 +12,9 @@ env.Append(
     CPPDEFINES=[
         "PB_ENABLE_MALLOC",
     ],
+    SDK_HEADERS=[
+        File("micro-ecc/uECC.h"),
+    ],
 )
 
 
